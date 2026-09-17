@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Bank SMS carry a local date and time and no timezone. The customer, the bank
- * and the branch are all in India, so these are IST.
+ * Bank SMS and emails carry local date and time.
+ * For SMS, these are local IST. Emails carry RFC-1123 date headers with timezone offset (+0530).
  */
 public final class Dates {
 
@@ -24,14 +24,29 @@ public final class Dates {
             DateTimeFormatter.ofPattern("dd MMM yy HH:mm", Locale.ENGLISH),
             DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm", Locale.ENGLISH));
 
+    private static final DateTimeFormatter EMAIL_DATE =
+            DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
+
     /** Parse a local date-time written by a bank, as IST. */
     public static OffsetDateTime ist(String dateAndTime) {
+        if (dateAndTime == null) return null;
+        String s = dateAndTime.trim();
+
+        // 1. Try RFC-1123 email date (e.g., Wed, 01 Jul 2026 09:02:00 +0530)
+        try {
+            return OffsetDateTime.parse(s, EMAIL_DATE).withOffsetSameInstant(IST);
+        } catch (DateTimeParseException ignored) {}
+
+        // 2. Try standard ISO if present
+        try {
+            return OffsetDateTime.parse(s).withOffsetSameInstant(IST);
+        } catch (DateTimeParseException ignored) {}
+
+        // 3. Try SMS patterns
         for (DateTimeFormatter f : SMS_FORMATS) {
             try {
-                return LocalDateTime.parse(dateAndTime.trim(), f).atOffset(IST);
-            } catch (DateTimeParseException ignored) {
-                // try the next shape
-            }
+                return LocalDateTime.parse(s, f).atOffset(IST);
+            } catch (DateTimeParseException ignored) {}
         }
         return null;
     }
