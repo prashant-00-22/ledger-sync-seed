@@ -1,0 +1,10 @@
+{
+  "discrepancies": [
+    {
+      "account_last4": "4821",
+      "occurred_at": "2026-07-29T17:05:59+05:30",
+      "amount": "7500.00",
+      "note": "Stated bank balance gap detected: inferred debit to reconcile running ledger balance with bank statement"
+    }
+  ]
+}
