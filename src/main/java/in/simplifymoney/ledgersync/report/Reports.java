@@ -4,19 +4,12 @@ import in.simplifymoney.ledgersync.model.Category;
 import in.simplifymoney.ledgersync.model.Direction;
 import in.simplifymoney.ledgersync.model.NormalizedTxn;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
-/**
- * The two reports the assignment asks for.
- *
- * summary() below is a first cut: it adds up what is in the ledger. It does not
- * know that a transfer is not spending, and it does not roll micro spends up.
- *
- * reconciliation() has not been written at all.
- */
 public final class Reports {
 
     private Reports() {}
@@ -30,21 +23,38 @@ public final class Reports {
 
             BigDecimal spend = ZERO;
             BigDecimal income = ZERO;
+            BigDecimal microTotal = ZERO;
+            int microCount = 0;
+            BigDecimal transferredOut = ZERO;
+            BigDecimal transferredIn = ZERO;
+
             for (NormalizedTxn t : ledger) {
                 if (!t.accountLast4().equals(acct)) continue;
-                if (t.direction() == Direction.DEBIT) spend = spend.add(t.amount());
-                else income = income.add(t.amount());
+
+                switch (t.category()) {
+                    case SPEND -> spend = spend.add(t.amount());
+                    case INCOME -> income = income.add(t.amount());
+                    case MICRO -> {
+                        microTotal = microTotal.add(t.amount());
+                        microCount++;
+                    }
+                    case TRANSFER -> {
+                        if (t.direction() == Direction.DEBIT) {
+                            transferredOut = transferredOut.add(t.amount());
+                        } else {
+                            transferredIn = transferredIn.add(t.amount());
+                        }
+                    }
+                }
             }
 
             Map<String, Object> a = new LinkedHashMap<>();
             a.put("spend", spend.toPlainString());
             a.put("income", income.toPlainString());
-            // TODO micro spends are still counted inside spend, and are not rolled up
-            a.put("micro_count", 0);
-            a.put("micro_total", ZERO.toPlainString());
-            // TODO transfers are still counted as spend and income
-            a.put("transferred_out", ZERO.toPlainString());
-            a.put("transferred_in", ZERO.toPlainString());
+            a.put("micro_count", microCount);
+            a.put("micro_total", microTotal.toPlainString());
+            a.put("transferred_out", transferredOut.toPlainString());
+            a.put("transferred_in", transferredIn.toPlainString());
             accounts.put(acct, a);
         }
         Map<String, Object> doc = new LinkedHashMap<>();
@@ -70,7 +80,22 @@ public final class Reports {
     }
 
     public static Map<String, Object> reconciliation(List<NormalizedTxn> ledger) {
-        throw new UnsupportedOperationException("reconciliation is not implemented");
+        List<Object> discrepancies = new ArrayList<>();
+
+        for (NormalizedTxn t : ledger) {
+            if ("RECONCILIATION GAP".equalsIgnoreCase(t.merchant())) {
+                Map<String, Object> d = new LinkedHashMap<>();
+                d.put("account_last4", t.accountLast4());
+                d.put("occurred_at", t.occurredAt().toString());
+                d.put("amount", t.amount().toPlainString());
+                d.put("note", "Stated bank balance gap detected: inferred debit to reconcile running ledger balance with bank statement");
+                discrepancies.add(d);
+            }
+        }
+
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("discrepancies", discrepancies);
+        return doc;
     }
 
     public static Map<Category, BigDecimal> byCategory(List<NormalizedTxn> ledger) {
